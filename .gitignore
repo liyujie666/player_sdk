@@ -1,0 +1,23 @@
+# 编译产物
+build/
+cmake-build-*/
+out/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+CMakeSettings.json
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 临时文件
+*.log
+*.tmp
+*.bak
