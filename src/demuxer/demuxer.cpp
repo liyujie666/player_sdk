@@ -2,6 +2,10 @@
 #include "utils/log.h"
 #include <mutex>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #define FF_ERROR_BUF(ret) \
 char errBuf[AV_ERROR_MAX_STRING_SIZE] = {0}; \
     av_strerror(ret, errBuf, sizeof(errBuf));
@@ -20,6 +24,45 @@ static void ffmpegGlobalInit() {
     });
 }
 
+// Returns true if the byte sequence is valid UTF-8.
+static bool isValidUtf8(const char* data, size_t len) {
+    size_t i = 0;
+    while (i < len) {
+        unsigned char c = static_cast<unsigned char>(data[i]);
+        if (c <= 0x7F) {
+            ++i;
+            continue;
+        }
+        // Determine expected continuation bytes from the leading byte
+        int cont = 0;
+        if ((c >> 5) == 0x06)       cont = 1;  // 0xC0–0xDF: 2-byte sequence
+        else if ((c >> 4) == 0x0E)  cont = 2;  // 0xE0–0xEF: 3-byte sequence
+        else if ((c >> 3) == 0x1E)  cont = 3;  // 0xF0–0xF7: 4-byte sequence
+        else                         return false; // Invalid leading byte
+
+        if (i + cont >= len) return false;
+        for (int j = 1; j <= cont; ++j) {
+            if ((static_cast<unsigned char>(data[i + j]) >> 6) != 0x02)
+                return false;
+        }
+        i += cont + 1;
+    }
+    return true;
+}
+
+// Detects whether the input string is likely encoded in GBK (non-UTF-8)
+// by checking for high-byte (>0x7F) sequences that violate UTF-8 rules.
+// On Windows, this catches the common case where a QString was converted
+// via toLocal8Bit() instead of toUtf8().
+static bool isLikelyGbk(const std::string& str) {
+    // If every byte with the high bit set forms a valid UTF-8 multi-byte
+    // sequence, treat it as UTF-8.
+    if (isValidUtf8(str.data(), str.size()))
+        return false;
+    // Otherwise it contains non-UTF-8 high bytes → likely GBK/ANSI.
+    return true;
+}
+
 Demuxer::Demuxer()
 {
     ffmpegGlobalInit();
@@ -34,6 +77,18 @@ int Demuxer::open(const std::string& filename)
 {
     if (filename.empty()) return AVERROR(EINVAL);
 
+#ifdef _WIN32
+    // Detect GBK/ANSI encoding (common when Qt QString uses toLocal8Bit()
+    // instead of toUtf8()).  GBK paths will fail on FFmpeg → give a clear warning.
+    if (isLikelyGbk(filename)) {
+        SP_LOG_WARN("Path contains non-UTF-8 characters (likely GBK/ANSI encoding). "
+                     "This usually means Qt passed a QString via toLocal8Bit() "
+                     "instead of toUtf8().  "
+                     "Please convert QString to std::string with toUtf8().constData() "
+                     "before calling open().  "
+                     "Current path: %s", filename.c_str());
+    }
+#endif
     std::unique_lock<std::shared_mutex> locker(lock_);
     closeInternal();
     abort_ = false;
@@ -58,16 +113,18 @@ int Demuxer::open(const std::string& filename)
 
     int ret = avformat_open_input(&fmtCtx_, filename.c_str(), nullptr, &options);
     av_dict_free(&options);
-    CHECK_FF_ERROR(ret, avformat_open_input);
     if (ret < 0) {
+        FF_ERROR_BUF(ret);
+        SP_LOG_ERROR("[avformat_open_input] open failed. ret=%d, error: %s", ret, errBuf);
         avformat_free_context(fmtCtx_);
         fmtCtx_ = nullptr;
         return ret;
     }
 
     ret = avformat_find_stream_info(fmtCtx_, nullptr);
-    CHECK_FF_ERROR(ret, avformat_find_stream_info);
     if (ret < 0) {
+        FF_ERROR_BUF(ret);
+        SP_LOG_ERROR("[avformat_find_stream_info] failed. ret=%d, error: %s", ret, errBuf);
         closeInternal();
         return ret;
     }

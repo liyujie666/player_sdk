@@ -33,8 +33,8 @@ public:
     int frameH_ = 0;
     SmartPixelFormat frameFmt_ = SP_FMT_UNKNOWN;
 
-    void onOpenResult(bool ok, const std::string& err) override {
-        printf("[Player] Open: %s\n", ok ? "success" : err.c_str());
+    void onOpenResult(bool ok, const char* err) override {
+        printf("[Player] Open: %s\n", ok ? "success" : err);
     }
 
     void onStateChanged(SmartPlayerState state) override {
@@ -47,9 +47,9 @@ public:
     }
 
     void onMediaInfoReady(const SmartMediaInfo& info) override {
-        printf("[Player] %s | %s | %.1ffps | audio:%dHz ch:%d\n",
-               info.fileName.c_str(),
-               info.videoPixelFormat.c_str(),
+        printf("[Player] %s | %s | %.1f fps | audio: %d Hz ch: %d\n",
+               info.fileName,
+               info.videoPixelFormat,
                info.videoFrameRate,
                info.audioSampleRate,
                info.audioChannels);
@@ -85,8 +85,8 @@ public:
         finished_ = true;
     }
 
-    void onError(const std::string& msg) override {
-        printf("[Player] Error: %s\n", msg.c_str());
+    void onError(const char* msg) override {
+        printf("[Player] Error: %s\n", msg);
     }
 
     // Called on the main thread — creates/updates the texture and renders

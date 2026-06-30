@@ -2,7 +2,6 @@
 #define SMARTPLAYER_DEFS_H
 
 #include <cstdint>
-#include <string>
 
 // DLL export macros
 #ifdef SMARTPLAYER_STATIC
@@ -45,14 +44,14 @@ enum SmartMediaType : int {
 
 // Media info DTO
 struct SmartMediaInfo {
-    std::string fileName;
-    std::string filePath;
-    std::string formatName;
+    char        fileName[512]       = {};
+    char        filePath[512]       = {};
+    char        formatName[128]     = {};
     int64_t     durationMs   = 0;
     int64_t     bitRate      = 0;
     bool        hasVideo     = false;
     bool        hasAudio     = false;
-    std::string videoPixelFormat;
+    char        videoPixelFormat[64] = {};
     double      videoFrameRate = 0.0;
     int         audioChannels   = 0;
     int         audioSampleRate = 0;

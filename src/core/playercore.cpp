@@ -63,12 +63,14 @@ void PlayerCore::open(const std::string &url)
         open_thread_ = std::make_unique<std::thread>([this, url]() {
             stop();
             bool ret = openInternal(url);
-            if (callback_) callback_->onOpenResult(ret, ret ? "" : "open failed");
+            const char* errMsg = ret ? "" : "open failed";
+            if (callback_) callback_->onOpenResult(ret, errMsg);
         });
     } else {
         stop();
         bool ret = openInternal(url);
-        if (callback_) callback_->onOpenResult(ret, ret ? "" : "open failed");
+        const char* errMsg = ret ? "" : "open failed";
+        if (callback_) callback_->onOpenResult(ret, errMsg);
     }
 }
 
@@ -83,7 +85,10 @@ bool PlayerCore::openInternal(const std::string &url)
     if (ret < 0) {
         SP_LOG_ERROR("Demuxer open failed");
         releaseResources();
-        if (callback_) callback_->onError(url + " open failed");
+        if (callback_) {
+            std::string err = url + " open failed";
+            callback_->onError(err.c_str());
+        }
         return false;
     }
 
@@ -813,7 +818,7 @@ void PlayerCore::videoRenderThreadFunc()
                     savePath = "./smartplayer_screenshot";
                 }
                 bool ok = self->saveFrameToJpeg(frame_copy.data(), w_copy, h_copy, fmt_copy, savePath);
-                if (cb) cb->onScreenshot(savePath, ok);
+                if (cb) cb->onScreenshot(savePath.c_str(), ok);
                 self->screenshot_busy_ = false;
             }).detach();
         }
@@ -992,7 +997,7 @@ int PlayerCore::speedToIndex(float speed) const
 void PlayerCore::fillMediaInfo()
 {
     media_info_ = SmartMediaInfo{};
-    media_info_.filePath = file_url_;
+    strncpy(media_info_.filePath, file_url_.c_str(), sizeof(media_info_.filePath) - 1);
 
     // File name
     size_t pos1 = file_url_.find_last_of('/');
@@ -1000,7 +1005,8 @@ void PlayerCore::fillMediaInfo()
     size_t pos = std::string::npos;
     if (pos1 != std::string::npos) pos = pos1;
     if (pos2 != std::string::npos && pos2 > pos) pos = pos2;
-    media_info_.fileName = (pos == std::string::npos) ? file_url_ : file_url_.substr(pos + 1);
+    std::string name = (pos == std::string::npos) ? file_url_ : file_url_.substr(pos + 1);
+    strncpy(media_info_.fileName, name.c_str(), sizeof(media_info_.fileName) - 1);
 
     media_info_.durationMs = duration_ms_;
     media_info_.hasVideo = hasVideo_;
@@ -1008,7 +1014,10 @@ void PlayerCore::fillMediaInfo()
 
     AVFormatContext* fmtCtx = demuxer_->formatContext();
     if (fmtCtx) {
-        media_info_.formatName = fmtCtx->iformat ? fmtCtx->iformat->name : "";
+        if (fmtCtx->iformat) {
+            strncpy(media_info_.formatName, fmtCtx->iformat->name,
+                    sizeof(media_info_.formatName) - 1);
+        }
         media_info_.bitRate = fmtCtx->bit_rate;
     }
 
@@ -1016,7 +1025,8 @@ void PlayerCore::fillMediaInfo()
         AVStream* vs = demuxer_->getStream(AVMEDIA_TYPE_VIDEO);
         if (vs && vs->codecpar) {
             const char* fmtName = av_get_pix_fmt_name(static_cast<AVPixelFormat>(vs->codecpar->format));
-            media_info_.videoPixelFormat = fmtName ? fmtName : "unknown";
+            strncpy(media_info_.videoPixelFormat, fmtName ? fmtName : "unknown",
+                    sizeof(media_info_.videoPixelFormat) - 1);
             if (vs->avg_frame_rate.den > 0) {
                 media_info_.videoFrameRate = av_q2d(vs->avg_frame_rate);
             }

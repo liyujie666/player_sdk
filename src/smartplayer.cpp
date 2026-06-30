@@ -34,9 +34,9 @@ SmartPlayer::SmartPlayer()
 
 SmartPlayer::~SmartPlayer() = default;
 
-void SmartPlayer::open(const std::string& url)
+void SmartPlayer::open(const char* url)
 {
-    d->core_.open(url);
+    d->core_.open(std::string(url));
 }
 
 void SmartPlayer::play()
@@ -79,14 +79,14 @@ void SmartPlayer::setHardwareDecode(bool enable)
     d->core_.useHardware(enable);
 }
 
-void SmartPlayer::setDecoderType(const std::string& decoder)
+void SmartPlayer::setDecoderType(const char* decoder)
 {
-    d->core_.setDecodeType(decoder);
+    d->core_.setDecodeType(std::string(decoder));
 }
 
-void SmartPlayer::takeScreenshot(const std::string& savePath)
+void SmartPlayer::takeScreenshot(const char* savePath)
 {
-    d->core_.setScreenshotSavePath(savePath);
+    d->core_.setScreenshotSavePath(std::string(savePath));
     d->core_.takeScreenshot();
 }
 
