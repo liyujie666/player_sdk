@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-// DLL 导出宏
+// DLL export macros
 #ifdef SMARTPLAYER_STATIC
   #define SMARTPLAYER_API
 #elif defined(_WIN32)
@@ -17,14 +17,14 @@
   #define SMARTPLAYER_API __attribute__((visibility("default")))
 #endif
 
-// 播放器状态
+// Player states
 enum SmartPlayerState : int {
     SP_STATE_STOPPED = 0,
     SP_STATE_RUNNING = 1,
     SP_STATE_PAUSED  = 2
 };
 
-// 像素格式（帧回调用）
+// Pixel formats (used by the video frame callback)
 enum SmartPixelFormat : int {
     SP_FMT_UNKNOWN  = 0,
     SP_FMT_YUV420P  = 1,
@@ -33,7 +33,7 @@ enum SmartPixelFormat : int {
     SP_FMT_BGRA     = 4
 };
 
-// 媒体类型
+// Media types
 enum SmartMediaType : int {
     SP_MEDIA_FILE  = 0,
     SP_MEDIA_RTSP  = 1,
@@ -43,7 +43,7 @@ enum SmartMediaType : int {
     SP_MEDIA_HLS   = 5
 };
 
-// 媒体信息 DTO
+// Media info DTO
 struct SmartMediaInfo {
     std::string fileName;
     std::string filePath;

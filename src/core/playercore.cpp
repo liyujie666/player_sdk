@@ -29,11 +29,11 @@ PlayerCore::PlayerCore()
 
 PlayerCore::~PlayerCore()
 {
-    SP_LOG_DEBUG("~PlayerCore() 开始");
+    SP_LOG_DEBUG("~PlayerCore() start");
     stop();
 
     if (open_thread_ && open_thread_->joinable()) {
-        SP_LOG_DEBUG("~PlayerCore() 等待 open 线程...");
+        SP_LOG_DEBUG("~PlayerCore() waiting for open thread...");
         open_thread_->join();
     }
 
@@ -47,13 +47,13 @@ PlayerCore::~PlayerCore()
         delete sync_clock_;
         sync_clock_ = nullptr;
     }
-    SP_LOG_DEBUG("~PlayerCore() 完成");
+    SP_LOG_DEBUG("~PlayerCore() done");
 }
 
 
 void PlayerCore::open(const std::string &url)
 {
-    // 等待上一次异步 open 完成
+    // Wait for previous async open to finish
     if (open_thread_ && open_thread_->joinable()) {
         open_thread_->join();
     }
@@ -77,13 +77,13 @@ bool PlayerCore::openInternal(const std::string &url)
 
     int ret=0;
 
-    // 解复用器
+    // Demuxer
     demuxer_ = new Demuxer();
     ret = demuxer_->open(url);
     if (ret < 0) {
-        SP_LOG_ERROR("解复用器打开失败");
+        SP_LOG_ERROR("Demuxer open failed");
         releaseResources();
-        if (callback_) callback_->onError(url + " 打开失败");
+        if (callback_) callback_->onError(url + " open failed");
         return false;
     }
 
@@ -92,7 +92,7 @@ bool PlayerCore::openInternal(const std::string &url)
     hasAudio_ = demuxer_->hasStream(AVMEDIA_TYPE_AUDIO);
     hasVideo_ = demuxer_->hasStream(AVMEDIA_TYPE_VIDEO);
 
-    // 视频解码器
+    // Video decoder
     if(hasVideo_){
         video_decoder_ = new Decoder();
         video_decoder_->useHardware(hardware_enabled_);
@@ -100,7 +100,7 @@ bool PlayerCore::openInternal(const std::string &url)
         AVStream* vStream = demuxer_->getStream(AVMEDIA_TYPE_VIDEO);
         ret = video_decoder_->init(vStream->codecpar,AVMEDIA_TYPE_VIDEO,decoder_type_);
         if(ret < 0){
-            SP_LOG_ERROR("视频解码器初始化失败！");
+            SP_LOG_ERROR("Video decoder init failed!");
             releaseResources();
             return false;
         }
@@ -108,7 +108,7 @@ bool PlayerCore::openInternal(const std::string &url)
         initVideoModule();
 
     }
-    // 音频解码器
+    // Audio decoder
     if(hasAudio_){
         audio_decoder_ = new Decoder();
         audio_stream_idx_ = demuxer_->getStreamIndex(AVMEDIA_TYPE_AUDIO);
@@ -116,7 +116,7 @@ bool PlayerCore::openInternal(const std::string &url)
         AVStream* aStream = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
         ret = audio_decoder_->init(aStream->codecpar,AVMEDIA_TYPE_AUDIO);
         if(ret < 0){
-            SP_LOG_ERROR("音频解码器初始化失败！");
+            SP_LOG_ERROR("Audio decoder init failed!");
             releaseResources();
             return false;
         }
@@ -124,7 +124,7 @@ bool PlayerCore::openInternal(const std::string &url)
         initAudioModule();
     }
 
-    // 设置基准时钟
+    // Set up the sync clock
     AVSyncClock::SyncMode syncMode;
     if (hasAudio_ && hasVideo_) {
         syncMode = AVSyncClock::AUDIO_MASTER;
@@ -140,7 +140,7 @@ bool PlayerCore::openInternal(const std::string &url)
     duration_ms_ = demuxer_->getDuration();
     state_ = Stopped;
 
-    // 填充媒体信息并通知
+    // Fill media info and notify
     fillMediaInfo();
     if (callback_) {
         callback_->onDurationChanged(duration_ms_);
@@ -153,7 +153,7 @@ bool PlayerCore::openInternal(const std::string &url)
 void PlayerCore::initAudioModule()
 {
     if (!audio_decoder_ || !audio_decoder_->codecCtx()) {
-        SP_LOG_ERROR("音频解码器上下文无效，初始化失败");
+        SP_LOG_ERROR("Audio decoder context invalid, init failed");
         return;
     }
 
@@ -173,26 +173,26 @@ void PlayerCore::initAudioModule()
     out_spec.bytesPerSample = av_get_bytes_per_sample(out_spec.sampleFmt);
     av_channel_layout_from_string(&out_spec.chLayout, "stereo");
 
-    // 初始化倍速滤镜
+    // Init speed filter
     audio_filter_ = new AudioFilter();
     if (audio_filter_->init(in_spec.sampleRate, in_spec.sampleFmt, in_spec.chs) < 0) {
-        SP_LOG_ERROR("音频倍速滤镜初始化失败");
+        SP_LOG_ERROR("Audio speed filter init failed");
         delete audio_filter_; audio_filter_ = nullptr;
         return;
     }
 
-    // 滤镜输出格式为 S16（packed），采样率和声道数不变
-    // AudioOutput 的输入规格应匹配滤镜的实际输出，而非解码器原始输出
+    // Filter output format is S16 (packed), sample rate and channels unchanged
+    // AudioOutput input spec should match the filter's actual output, not the decoder's raw output
     Resampler::AudioSpec filter_out_spec;
     filter_out_spec.sampleRate    = in_spec.sampleRate;
-    filter_out_spec.sampleFmt     = AV_SAMPLE_FMT_S16;  // atempo + aformat 输出 s16
+    filter_out_spec.sampleFmt     = AV_SAMPLE_FMT_S16;  // atempo + aformat outputs s16
     filter_out_spec.chs           = in_spec.chs;
     filter_out_spec.chLayout      = in_spec.chLayout;
     filter_out_spec.bytesPerSample = av_get_bytes_per_sample(AV_SAMPLE_FMT_S16);
 
     audio_output_ = new AudioOutput(filter_out_spec, out_spec, audio_frame_queue_, sync_clock_);
     if (audio_output_->Init() < 0) {
-        SP_LOG_ERROR("SDL 音频输出初始化失败");
+        SP_LOG_ERROR("SDL audio output init failed");
         delete audio_filter_; audio_filter_ = nullptr;
         delete audio_output_; audio_output_ = nullptr;
         return;
@@ -200,10 +200,10 @@ void PlayerCore::initAudioModule()
 
     audio_output_->setAudioTimebase(demuxer_->getStream(AVMEDIA_TYPE_AUDIO)->time_base);
 
-    SP_LOG_DEBUG("=== 音频模块初始化完成 ===");
-    SP_LOG_DEBUG("解码器输出: 采样率%dHz, 声道数%d",
+    SP_LOG_DEBUG("=== Audio module init done ===");
+    SP_LOG_DEBUG("Decoder output: sampleRate=%dHz, channels=%d",
                  in_spec.sampleRate, in_spec.chs);
-    SP_LOG_DEBUG("SDL播放: 采样率%dHz, 声道数%d",
+    SP_LOG_DEBUG("SDL playback: sampleRate=%dHz, channels=%d",
                  out_spec.sampleRate, out_spec.chs);
 }
 
@@ -211,7 +211,7 @@ void PlayerCore::initAudioModule()
 void PlayerCore::initVideoModule()
 {
     if (!video_decoder_ || !video_decoder_->codecCtx()) {
-        SP_LOG_ERROR("视频解码器初始化失败，无法初始化视频模块");
+        SP_LOG_ERROR("Video decoder init failed, cannot init video module");
         return;
     }
 
@@ -228,12 +228,12 @@ void PlayerCore::initVideoModule()
 
     converter_ = new VideoConverter();
     if (converter_->init(in_spec, out_spec) < 0) {
-        SP_LOG_ERROR("视频转换器初始化失败");
+        SP_LOG_ERROR("Video converter init failed");
         delete converter_; converter_ = nullptr;
     }
 
-    SP_LOG_DEBUG("=== 视频模块初始化完成 ===");
-    SP_LOG_DEBUG("视频参数: %dx%d 格式: %s",
+    SP_LOG_DEBUG("=== Video module init done ===");
+    SP_LOG_DEBUG("Video params: %dx%d format: %s",
                  in_spec.width, in_spec.height,
                  av_get_pix_fmt_name(in_spec.pixFmt));
 }
@@ -256,14 +256,14 @@ void PlayerCore::play()
         }
         cond_.notify_all();
         notifyStateChanged();
-        SP_LOG_DEBUG("播放器：恢复播放");
+        SP_LOG_DEBUG("Player: resume playback");
         return;
     }
 
     if (state_ == Stopped) {
-        // 安全检查：确保 demuxer 已成功打开
+        // Safety check: ensure demuxer is open successfully
         if (!demuxer_ || !demuxer_->isOpen()) {
-            SP_LOG_ERROR("play() 失败：媒体未打开");
+            SP_LOG_ERROR("play() failed: media not opened");
             return;
         }
 
@@ -283,7 +283,7 @@ void PlayerCore::play()
             video_render_thread_ = std::make_unique<std::thread>(&PlayerCore::videoRenderThreadFunc, this);
         }
 
-        SP_LOG_DEBUG("播放器：开始播放");
+        SP_LOG_DEBUG("Player: start playback");
     }
 
     notifyStateChanged();
@@ -300,23 +300,23 @@ void PlayerCore::pause()
         if(sync_clock_){
             sync_clock_->pause();
         }
-        SP_LOG_DEBUG("播放器：已暂停");
+        SP_LOG_DEBUG("Player: paused");
     }
     notifyStateChanged();
 }
 
 void PlayerCore::stop()
 {
-    SP_LOG_DEBUG("stop() 开始");
-    // 等待异步 open 线程完成
+    SP_LOG_DEBUG("stop() start");
+    // Wait for async open thread to finish
     if (open_thread_ && open_thread_->joinable()) {
-        SP_LOG_DEBUG("stop() 等待 open 线程...");
+        SP_LOG_DEBUG("stop() waiting for open thread...");
         open_thread_->join();
     }
     open_thread_.reset();
 
     if (state_ == Stopped) {
-        SP_LOG_DEBUG("stop() 已是 Stopped 状态，直接返回");
+        SP_LOG_DEBUG("stop() already in Stopped state, return");
         return;
     }
 
@@ -326,41 +326,41 @@ void PlayerCore::stop()
         is_seek_ = false;
         cond_.notify_all();
     }
-    SP_LOG_DEBUG("stop() 已设置 is_exit_=true，通知所有线程");
+    SP_LOG_DEBUG("stop() set is_exit_=true, notify all threads");
 
     clearAllQueues();
-    SP_LOG_DEBUG("stop() 队列已清空");
+    SP_LOG_DEBUG("stop() queues cleared");
 
     if (demux_thread_ && demux_thread_->joinable()) {
-        SP_LOG_DEBUG("stop() 等待 demux 线程...");
+        SP_LOG_DEBUG("stop() waiting for demux thread...");
         demux_thread_->join();
     }
     demux_thread_.reset();
-    SP_LOG_DEBUG("stop() demux 线程已退出");
+    SP_LOG_DEBUG("stop() demux thread exited");
 
     if (audio_decode_thread_ && audio_decode_thread_->joinable()) {
-        SP_LOG_DEBUG("stop() 等待 audio decode 线程...");
+        SP_LOG_DEBUG("stop() waiting for audio decode thread...");
         audio_decode_thread_->join();
     }
     audio_decode_thread_.reset();
-    SP_LOG_DEBUG("stop() audio decode 线程已退出");
+    SP_LOG_DEBUG("stop() audio decode thread exited");
 
     if (video_decode_thread_ && video_decode_thread_->joinable()) {
-        SP_LOG_DEBUG("stop() 等待 video decode 线程...");
+        SP_LOG_DEBUG("stop() waiting for video decode thread...");
         video_decode_thread_->join();
     }
     video_decode_thread_.reset();
-    SP_LOG_DEBUG("stop() video decode 线程已退出");
+    SP_LOG_DEBUG("stop() video decode thread exited");
 
     if (video_render_thread_ && video_render_thread_->joinable()) {
-        SP_LOG_DEBUG("stop() 等待 video render 线程...");
+        SP_LOG_DEBUG("stop() waiting for video render thread...");
         video_render_thread_->join();
     }
     video_render_thread_.reset();
-    SP_LOG_DEBUG("stop() video render 线程已退出");
+    SP_LOG_DEBUG("stop() video render thread exited");
 
     releaseResources();
-    SP_LOG_DEBUG("stop() 资源已释放");
+    SP_LOG_DEBUG("stop() resources released");
     sync_clock_->reset();
 
     state_ = Stopped;
@@ -371,7 +371,7 @@ void PlayerCore::stop()
     hasVideo_ = false;
     notifyStateChanged();
 
-    SP_LOG_DEBUG("播放器：已停止，资源已释放");
+    SP_LOG_DEBUG("Player: stopped, resources released");
 }
 
 void PlayerCore::setSpeed(float speed)
@@ -467,7 +467,7 @@ bool PlayerCore::isMute() const
 
 void PlayerCore::demuxThreadFunc()
 {
-    SP_LOG_DEBUG("解复用线程启动");
+    SP_LOG_DEBUG("Demuxer thread start");
     AVPacket* pkt = av_packet_alloc();
 
     while (!is_exit_)
@@ -496,15 +496,15 @@ void PlayerCore::demuxThreadFunc()
         if (ret < 0)
         {
             if (ret == AVERROR_EOF){
-                SP_LOG_DEBUG("解复用完成：媒体文件读取完毕 (EOF)");
+                SP_LOG_DEBUG("Demuxer finished: media read to EOF");
                 if (callback_) {
-                    SP_LOG_DEBUG("调用 onPlayFinished...");
+                    SP_LOG_DEBUG("Calling onPlayFinished...");
                     callback_->onPlayFinished();
-                    SP_LOG_DEBUG("onPlayFinished 返回");
+                    SP_LOG_DEBUG("onPlayFinished returned");
                 }
             }
             else{
-                SP_LOG_DEBUG("解复用读取包失败，错误码：%d", ret);
+                SP_LOG_DEBUG("Demuxer read packet failed, error code: %d", ret);
             }
             is_exit_ = true;
             cond_.notify_all();
@@ -528,13 +528,13 @@ void PlayerCore::demuxThreadFunc()
         }
     }
     av_packet_free(&pkt);
-    SP_LOG_DEBUG("解复用线程退出");
+    SP_LOG_DEBUG("Demuxer thread exit");
 }
 
 
 void PlayerCore::audioDecodeThreadFunc()
 {
-    SP_LOG_DEBUG("音频解码线程启动");
+    SP_LOG_DEBUG("Audio decode thread start");
 
     AVFrame* decoded_frame = av_frame_alloc();
     AVFrame* filtered_frame = av_frame_alloc();
@@ -567,13 +567,13 @@ void PlayerCore::audioDecodeThreadFunc()
         }
 
         if (ret == AVERROR_EOF) {
-            SP_LOG_DEBUG("音频解码完成（EOF）");
+            SP_LOG_DEBUG("Audio decode finished (EOF)");
             is_exit_ = true;
             cond_.notify_all();
             break;
         }
         if (ret < 0) {
-            SP_LOG_DEBUG("音频解码失败，错误码：%d", ret);
+            SP_LOG_DEBUG("Audio decode failed, error code: %d", ret);
             continue;
         }
 
@@ -585,8 +585,8 @@ void PlayerCore::audioDecodeThreadFunc()
             ret = audio_filter_->process(decoded_frame, filtered_frame);
             if (ret < 0)
             {
-                // 滤镜处理失败，丢弃该帧（原始帧格式与 AudioOutput 期望的不匹配）
-                SP_LOG_DEBUG("音频滤镜处理失败(ret=%d)，丢弃当前帧", ret);
+                // Filter processing failed, drop this frame (raw frame format does not match AudioOutput expectation)
+                SP_LOG_DEBUG("Audio filter failed (ret=%d), drop current frame", ret);
                 av_frame_unref(decoded_frame);
                 av_frame_unref(filtered_frame);
                 continue;
@@ -594,8 +594,8 @@ void PlayerCore::audioDecodeThreadFunc()
         }
         else
         {
-            // 无滤镜时，解码帧直接使用（注意：此时 AudioOutput 的 in_spec
-            // 应与解码器输出格式一致，否则需重采样）
+            // No filter: use decoded frame directly (note: AudioOutput's in_spec must
+            // match the decoder output format here, otherwise resampling is required)
             av_frame_move_ref(filtered_frame, decoded_frame);
         }
 
@@ -612,13 +612,13 @@ void PlayerCore::audioDecodeThreadFunc()
 
     av_frame_free(&decoded_frame);
     av_frame_free(&filtered_frame);
-    SP_LOG_DEBUG("音频解码线程退出");
+    SP_LOG_DEBUG("Audio decode thread exit");
 }
 
 
 void PlayerCore::videoDecodeThreadFunc()
 {
-    SP_LOG_DEBUG("视频解码线程启动");
+    SP_LOG_DEBUG("Video decode thread start");
     AVFrame* decoded_frame = av_frame_alloc();
     AVFrame* rgb_frame = av_frame_alloc();
     while (!is_exit_)
@@ -646,11 +646,11 @@ void PlayerCore::videoDecodeThreadFunc()
             continue;
         }
         if (ret == AVERROR_EOF) {
-            SP_LOG_DEBUG("视频解码完成（EOF）");
+            SP_LOG_DEBUG("Video decode finished (EOF)");
             break;
         }
         if (ret < 0) {
-            SP_LOG_DEBUG("视频解码失败，错误码：%d", ret);
+            SP_LOG_DEBUG("Video decode failed, error code: %d", ret);
             continue;
         }
 
@@ -660,13 +660,13 @@ void PlayerCore::videoDecodeThreadFunc()
 
     av_frame_free(&decoded_frame);
     av_frame_free(&rgb_frame);
-    SP_LOG_DEBUG("视频解码线程退出");
+    SP_LOG_DEBUG("Video decode thread exit");
 
 }
 
 void PlayerCore::videoRenderThreadFunc()
 {
-    SP_LOG_DEBUG("视频渲染线程启动");
+    SP_LOG_DEBUG("Video render thread start");
     AVFrame* frame = nullptr;
 
     while (!is_exit_)
@@ -708,9 +708,9 @@ void PlayerCore::videoRenderThreadFunc()
         SmartPixelFormat spFmt = SP_FMT_UNKNOWN;
 
         if (fmt == AV_PIX_FMT_YUV420P || fmt == AV_PIX_FMT_YUVJ420P) {
-            // 安全检查
+            // Safety check
             if (!frame->data[0] || !frame->data[1] || !frame->data[2]) {
-                SP_LOG_WARN("render: YUV420P 帧数据指针为空，跳过");
+                SP_LOG_WARN("render: YUV420P frame data pointer is null, skip");
                 GlobalPool::getFramePool().recycle(frame);
                 continue;
             }
@@ -719,7 +719,7 @@ void PlayerCore::videoRenderThreadFunc()
             int v_size = w * h / 4;
             frame_data.resize(y_size + u_size + v_size);
 
-            // 按行复制，处理 linesize > width 的情况
+            // Copy row by row, handle the case when linesize > width
             int y_stride = frame->linesize[0];
             int u_stride = frame->linesize[1];
             int v_stride = frame->linesize[2];
@@ -784,17 +784,17 @@ void PlayerCore::videoRenderThreadFunc()
             spFmt = (fmt == AV_PIX_FMT_RGBA) ? SP_FMT_RGBA : SP_FMT_BGRA;
         }
         else {
-            SP_LOG_WARN("不支持的视频格式：%s", av_get_pix_fmt_name(fmt));
+            SP_LOG_WARN("Unsupported video format: %s", av_get_pix_fmt_name(fmt));
             GlobalPool::getFramePool().recycle(frame);
             continue;
         }
 
-        // 帧回调
+        // Frame callback
         if (callback_ && !frame_data.empty()) {
             callback_->onVideoFrame(frame_data.data(), w, h, spFmt);
         }
 
-        // 截图
+        // Screenshot
         if (need_screenshot_ && !screenshot_busy_) {
             need_screenshot_ = false;
             screenshot_busy_ = true;
@@ -821,7 +821,7 @@ void PlayerCore::videoRenderThreadFunc()
         notifyPosition(currentPos());
         GlobalPool::getFramePool().recycle(frame);
     }
-    SP_LOG_DEBUG("视频渲染线程退出");
+    SP_LOG_DEBUG("Video render thread exit");
 }
 
 
@@ -831,11 +831,11 @@ bool PlayerCore::saveFrameToJpeg(const uint8_t* frame_data, int width, int heigh
     if(!frame_data || width <= 0 || height <= 0)
         return false;
 
-    // 创建目录
+    // Create directory
     std::error_code ec;
     std::filesystem::create_directories(savePath, ec);
 
-    // 生成文件名
+    // Generate file name
     auto now = std::chrono::system_clock::now();
     auto t = std::chrono::system_clock::to_time_t(now);
     std::tm tmv;
@@ -853,7 +853,7 @@ bool PlayerCore::saveFrameToJpeg(const uint8_t* frame_data, int width, int heigh
     }
     fullPath += std::string("screenshot_") + timeBuf + ".jpg";
 
-    // 1. 用 sws_scale 转为 YUVJ420P
+    // 1. Convert to YUVJ420P using sws_scale
     SwsContext* sws_ctx = sws_getContext(
         width, height, format,
         width, height, AV_PIX_FMT_YUVJ420P,
@@ -873,7 +873,7 @@ bool PlayerCore::saveFrameToJpeg(const uint8_t* frame_data, int width, int heigh
         return false;
     }
 
-    // 准备源数据
+    // Prepare source data
     const uint8_t* src_data[4] = {nullptr};
     int src_linesize[4] = {0};
     if (format == AV_PIX_FMT_NV12) {
@@ -897,7 +897,7 @@ bool PlayerCore::saveFrameToJpeg(const uint8_t* frame_data, int width, int heigh
     sws_scale(sws_ctx, src_data, src_linesize, 0, height, dst_data, dst_linesize);
     sws_freeContext(sws_ctx);
 
-    // 2. 查找 mjpeg 编码器
+    // 2. Find the mjpeg encoder
     const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
     if (!codec) {
         SP_LOG_ERROR("saveFrameToJpeg: mjpeg encoder not found");
@@ -916,7 +916,7 @@ bool PlayerCore::saveFrameToJpeg(const uint8_t* frame_data, int width, int heigh
     codecCtx->time_base = {1, 25};
     codecCtx->framerate = {25, 1};
 
-    // 设置 JPEG 质量
+    // Set JPEG quality
     av_opt_set(codecCtx->priv_data, "qmin", "2", 0);
     av_opt_set(codecCtx->priv_data, "qmax", "5", 0);
 
@@ -927,7 +927,7 @@ bool PlayerCore::saveFrameToJpeg(const uint8_t* frame_data, int width, int heigh
         return false;
     }
 
-    // 3. 创建帧并编码
+    // 3. Create frame and encode
     AVFrame* frame = av_frame_alloc();
     frame->width = width;
     frame->height = height;
@@ -960,10 +960,10 @@ bool PlayerCore::saveFrameToJpeg(const uint8_t* frame_data, int width, int heigh
         if (fp) {
             fwrite(pkt->data, 1, pkt->size, fp);
             fclose(fp);
-            SP_LOG_DEBUG("截图保存成功：%s", fullPath.c_str());
+            SP_LOG_DEBUG("Screenshot saved: %s", fullPath.c_str());
             success = true;
         } else {
-            SP_LOG_ERROR("截图保存失败：无法打开文件 %s", fullPath.c_str());
+            SP_LOG_ERROR("Screenshot save failed: cannot open file %s", fullPath.c_str());
         }
     } else {
         SP_LOG_ERROR("saveFrameToJpeg: encode failed: %d", ret);
@@ -994,7 +994,7 @@ void PlayerCore::fillMediaInfo()
     media_info_ = SmartMediaInfo{};
     media_info_.filePath = file_url_;
 
-    // 文件名
+    // File name
     size_t pos1 = file_url_.find_last_of('/');
     size_t pos2 = file_url_.find_last_of('\\');
     size_t pos = std::string::npos;
@@ -1106,7 +1106,7 @@ void PlayerCore::releaseResources()
         demuxer_ = nullptr;
     }
 
-    SP_LOG_DEBUG("资源已释放");
+    SP_LOG_DEBUG("Resources released");
 }
 
 int64_t PlayerCore::duration() const

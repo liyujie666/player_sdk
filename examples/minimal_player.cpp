@@ -1,9 +1,9 @@
-// SmartPlayer SDK 最小示例 —— 用 SDL2 渲染视频帧
+// SmartPlayer SDK minimal example — renders video frames with SDL2
 //
-// 编译: 参见 CMakeLists.txt 中的 SmartPlayerExample target
-// 运行: SmartPlayerExample <视频文件路径>
+// Build: see the SmartPlayerExample target in CMakeLists.txt
+// Run:   SmartPlayerExample <video_file_path>
 
-#define SDL_MAIN_HANDLED  // 防止 SDL2 重定义 main 为 SDL_main
+#define SDL_MAIN_HANDLED  // Prevent SDL2 from redefining main as SDL_main
 
 #include "smartplayer.h"
 #include "smartplayercallback.h"
@@ -23,10 +23,10 @@ public:
     SDL_Renderer* ren_ = nullptr;
     SDL_Texture*  tex_ = nullptr;
     std::atomic<bool> hasFrame_{false};
-    std::atomic<bool> finished_{false};   // 播放结束标志
-    bool customSize_ = false;             // 是否用户指定了窗口大小
+    std::atomic<bool> finished_{false};   // playback finished flag
+    bool customSize_ = false;             // whether the user has specified the window size
 
-    // 线程安全帧缓冲：渲染线程写入，主线程读取
+    // Thread-safe frame buffer: written by the render thread, read by the main thread
     std::mutex frameMutex_;
     std::vector<uint8_t> frameBuf_;
     int frameW_ = 0;
@@ -89,7 +89,7 @@ public:
         printf("[Player] Error: %s\n", msg.c_str());
     }
 
-    // 在主线程调用 —— 创建/更新纹理并渲染
+    // Called on the main thread — creates/updates the texture and renders
     void render() {
         if (!hasFrame_.load() || !ren_) return;
 
@@ -103,7 +103,7 @@ public:
         if (!tex_ || texW_ != w || texH_ != h || texFmt_ != fmt) {
             if (tex_) SDL_DestroyTexture(tex_);
 
-            Uint32 sdlFmt = SDL_PIXELFORMAT_IYUV;  // I420 = YUV420P (Y-U-V 顺序)
+            Uint32 sdlFmt = SDL_PIXELFORMAT_IYUV;  // I420 = YUV420P (Y-U-V order)
             if (fmt == SP_FMT_NV12) sdlFmt = SDL_PIXELFORMAT_NV12;
             else if (fmt == SP_FMT_RGBA) sdlFmt = SDL_PIXELFORMAT_RGBA32;
             else if (fmt == SP_FMT_BGRA) sdlFmt = SDL_PIXELFORMAT_BGRA32;
@@ -145,7 +145,7 @@ private:
     SmartPixelFormat texFmt_ = SP_FMT_UNKNOWN;
 };
 
-// 命令行参数解析辅助
+// Command-line argument parser helper
 static void printUsage(const char* prog) {
     printf("Usage: %s <video_file> [options]\n", prog);
     printf("Options:\n");
@@ -167,7 +167,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 解析命令行参数
+    // Parse command-line arguments
     const char* videoFile = nullptr;
     bool hwDecode = false;
     float initSpeed = 1.0f;
@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 设置初始倍速
+    // Set initial playback speed
     if (initSpeed != 1.0f) {
         player.setSpeed(initSpeed);
         printf("[Player] Speed: %.1fx\n", initSpeed);
@@ -242,7 +242,7 @@ int main(int argc, char* argv[]) {
     int volume = 50;
     bool muted = false;
     float currentSpeed = initSpeed;
-    // 倍速循环表
+    // Speed cycle table
     const float speedTable[] = {1.0f, 1.5f, 2.0f, 0.5f};
     const int speedTableSize = 4;
     int speedIdx = 0;
@@ -252,7 +252,7 @@ int main(int argc, char* argv[]) {
 
     player.play();
 
-    // 禁用 SDL TextInput，防止中文输入法拦截字母按键
+    // Disable SDL TextInput so the CJK IME does not intercept letter key presses
     SDL_StopTextInput();
 
     printf("[Player] Hardware decode: %s\n", hwDecode ? "ON" : "OFF");

@@ -23,7 +23,7 @@ AudioOutput::AudioOutput(const Resampler::AudioSpec &inSpec,
     if(need_resample_){
         resampler_ = new Resampler();
         resampler_->init(inSpec, outSpec);
-        SP_LOG_DEBUG("[AudioOutput] 重采样器初始化完成");
+        SP_LOG_DEBUG("[AudioOutput] Resampler init done");
     } else {
         resampler_ = nullptr;
     }
@@ -51,10 +51,10 @@ int AudioOutput::Init()
         return 0;
     }
 
-    // 如果 AUDIO 子系统尚未初始化，则初始化它
+    // If AUDIO subsystem has not been initialized yet, initialize it
     if (!(SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO)) {
         if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
-            SP_LOG_ERROR("SDL音频子系统初始化失败: %s", SDL_GetError());
+            SP_LOG_ERROR("SDL audio subsystem init failed: %s", SDL_GetError());
             return -1;
         }
     }
@@ -71,12 +71,12 @@ int AudioOutput::Init()
     } else if (out_spec_.sampleFmt == AV_SAMPLE_FMT_FLT) {
         spec.format = AUDIO_F32LSB;
     } else {
-        SP_LOG_ERROR("不支持的采样格式: %d", out_spec_.sampleFmt);
+        SP_LOG_ERROR("Unsupported sample format: %d", out_spec_.sampleFmt);
         return -1;
     }
 
     if (SDL_OpenAudio(&spec, nullptr) != 0) {
-        SP_LOG_ERROR("SDL打开音频设备失败: %s", SDL_GetError());
+        SP_LOG_ERROR("SDL open audio device failed: %s", SDL_GetError());
         return -1;
     }
 
@@ -93,8 +93,9 @@ int AudioOutput::DeInit()
 
     SDL_PauseAudio(1);
     SDL_CloseAudio();
-    // 注意：不再调用 SDL_QuitSubSystem(SDL_INIT_AUDIO)，
-    // 因为 AUDIO 子系统可能是外部应用初始化的，由外部负责释放
+    // Note: do not call SDL_QuitSubSystem(SDL_INIT_AUDIO) here,
+    // because the AUDIO subsystem may have been initialized by the external
+    // application, which is responsible for releasing it.
 
     if (audio_buf_) {
         free(audio_buf_);
@@ -176,9 +177,10 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                 }
                 int out_samples = 0;
 
-                // 正确估算重采样后的最大输出样本数（考虑采样率转换比率 + 内部延迟）
+                // Properly estimate the maximum number of output samples after resampling
+                // (consider the sample rate conversion ratio + internal delay)
                 int max_out_samples = av_rescale_rnd(
-                    frame->nb_samples + 256,  // 加额外余量应对 swr 内部延迟
+                    frame->nb_samples + 256,  // add extra margin for swr internal delay
                     out_spec_.sampleRate,
                     in_spec_.sampleRate,
                     AV_ROUND_UP
@@ -197,7 +199,7 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                 resampler_->resample(frame, &audio_buf_, &out_samples);
                 audio_buf_size_ = resampler_->outputBufferSize(out_samples);
             } else {
-                // 不需要重采样，直接拷贝帧数据
+                // No resampling needed, copy frame data directly
                 int planar = av_sample_fmt_is_planar((AVSampleFormat)frame->format);
                 int channels = frame->ch_layout.nb_channels;
 
@@ -225,7 +227,7 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                 }
 
                 if (planar && channels > 1) {
-                    // planar 格式：需要将各声道数据交织拷贝
+                    // planar format: need to interleave channels when copying
                     int bytes_per_sample = av_get_bytes_per_sample((AVSampleFormat)frame->format);
                     int plane_size = frame->nb_samples * bytes_per_sample;
                     uint8_t* dst = audio_buf_;
@@ -236,7 +238,7 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                         }
                     }
                 } else {
-                    // packed 格式：data[0] 包含所有交织数据，直接拷贝
+                    // packed format: data[0] contains interleaved data, copy directly
                     memcpy(audio_buf_, frame->data[0], audio_buf_size_);
                 }
             }

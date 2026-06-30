@@ -18,12 +18,12 @@ class AVSyncClock
     AVSyncClock& operator=(AVSyncClock&&) = delete;
 public:
     enum SyncMode {
-        AUDIO_MASTER,   // 音视频正常：音频为基准
-        VIDEO_MASTER,   // 纯音频：无视频，无需同步
-        SYSTEM_MASTER   // 纯视频：系统时钟为基准
+        AUDIO_MASTER,   // Normal A/V: audio is the master clock
+        VIDEO_MASTER,   // Audio-only: no video, no sync needed
+        SYSTEM_MASTER   // Video-only: system clock is the master
     };
 
-    // 微秒单位 (1ms = 1000us)
+    // Microsecond units (1ms = 1000us)
     static constexpr int64_t MIN_SYNC_THRESHOLD    = 10000;   // 10ms
     static constexpr int64_t MAX_SYNC_THRESHOLD    = 100000;  // 100ms
     static constexpr int64_t NOSYNC_THRESHOLD      = 10000000; // 10s
@@ -124,7 +124,7 @@ public:
             return std::max(new_timer - now, MIN_REFRSH_US);
         }
 
-        // 音视频
+        // Audio/video sync
         int64_t last_pts = m_last_pts.load(std::memory_order_acquire);
         if (last_pts == 0) {
             m_last_pts.store(video_pts_us, std::memory_order_release);

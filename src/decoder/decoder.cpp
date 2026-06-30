@@ -38,7 +38,7 @@ int Decoder::init(AVCodecParameters *codecpar, AVMediaType type, const std::stri
     if (!codecpar) return AVERROR(EINVAL);
     mediaType_ = type;
 
-    // ===== 尝试硬件解码 =====
+    // ===== Try hardware decoding =====
     AVHWDeviceType hwType = AV_HWDEVICE_TYPE_NONE;
     if (useHardware_.load() && mediaType_ == AVMEDIA_TYPE_VIDEO) {
         hwType = getBestHardwareType();
@@ -58,13 +58,13 @@ int Decoder::init(AVCodecParameters *codecpar, AVMediaType type, const std::stri
                         ret = avcodec_open2(codecCtx_, hwCodec, nullptr);
                         if (ret >= 0) {
                             isOpened_ = true;
-                            SP_LOG_DEBUG("解码器初始化成功 | 模式: 硬件解码 | 解码器名称: %s", hwCodec->name);
+                            SP_LOG_DEBUG("Decoder init success | Mode: HW decode | Decoder name: %s", hwCodec->name);
                             return 0;
                         }
                     }
                 }
-                // 硬件解码失败，清理后回退到软件解码
-                SP_LOG_WARN("硬件解码初始化失败，回退到软件解码");
+                // Hardware decoding failed, clean up and fall back to software decoding
+                SP_LOG_WARN("Hardware decoder init failed, falling back to software");
                 useHardware_.store(false);
                 avcodec_free_context(&codecCtx_);
                 if (hwDeviceCtx_) { av_buffer_unref(&hwDeviceCtx_); hwDeviceCtx_ = nullptr; }
@@ -73,10 +73,10 @@ int Decoder::init(AVCodecParameters *codecpar, AVMediaType type, const std::stri
         }
     }
 
-    // ===== 软件解码 =====
+    // ===== Software decoding =====
     const AVCodec* codec = findDecoder(codecpar, AV_HWDEVICE_TYPE_NONE, decodeName);
     if (!codec) {
-        SP_LOG_ERROR("未找到合适的解码器");
+        SP_LOG_ERROR("No suitable decoder found");
         return AVERROR_DECODER_NOT_FOUND;
     }
 
@@ -91,7 +91,7 @@ int Decoder::init(AVCodecParameters *codecpar, AVMediaType type, const std::stri
 
     isOpened_ = true;
 
-    SP_LOG_DEBUG("解码器初始化成功 | 模式: 软件解码 | 解码器名称: %s", codec->name);
+    SP_LOG_DEBUG("Decoder init success | Mode: SW decode | Decoder name: %s", codec->name);
     return 0;
 
 failed:
@@ -121,7 +121,7 @@ int Decoder::decode(AVPacket *pkt, AVFrame *&outFrame)
     std::unique_lock<std::shared_mutex> locker(lock_);
     int ret = avcodec_send_packet(codecCtx_, pkt);
     if (ret == AVERROR(EAGAIN)) {
-        // 发送需要等待，说明解码器内部还有未取走的帧，先取帧
+        // Send requires waiting, indicating the decoder still has un-fetched frames, fetch first
     } else if (ret == AVERROR_EOF) {
         return ret;
     } else if (ret < 0) {
@@ -214,7 +214,7 @@ AVCodec* Decoder::findDecoder(AVCodecParameters *codecpar, AVHWDeviceType hwType
     if (start == std::string::npos) name.clear();
     else name = name.substr(start, end - start + 1);
 
-    // 1. 用户指定解码器
+    // 1. User-specified decoder
     if (!name.empty()) {
         const AVCodec* codec = avcodec_find_decoder_by_name(name.c_str());
         if (codec) {
@@ -225,10 +225,10 @@ AVCodec* Decoder::findDecoder(AVCodecParameters *codecpar, AVHWDeviceType hwType
                 return const_cast<AVCodec*>(codec);
             }
         }
-        SP_LOG_DEBUG("指定解码器 %s 不支持，自动使用默认解码器", name.c_str());
+        SP_LOG_DEBUG("Specified decoder %s not supported, falling back to default decoder", name.c_str());
     }
 
-    // 2. 自动硬件解码器
+    // 2. Automatic hardware decoder
     if (hwType != AV_HWDEVICE_TYPE_NONE) {
         std::string hwName = getHardwareDecoderName(codecpar->codec_id, hwType);
         if (!hwName.empty()) {
@@ -237,7 +237,7 @@ AVCodec* Decoder::findDecoder(AVCodecParameters *codecpar, AVHWDeviceType hwType
         }
     }
 
-    // 3. 默认软解
+    // 3. Default software decoder
     return const_cast<AVCodec*>(avcodec_find_decoder(codecpar->codec_id));
 }
 AVHWDeviceType Decoder::getBestHardwareType()

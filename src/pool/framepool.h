@@ -28,7 +28,7 @@ private:
     size_t ringWrite_{0};
     size_t ringRead_{0};
     size_t maxSize_;
-    std::mutex mutex_;  // 保护环形缓冲，支持 MPMC 场景
+    std::mutex mutex_;  // Protects the ring buffer, supports MPMC scenarios
 
     std::atomic<int> createCount_{0};
     std::atomic<int> recycleCount_{0};

@@ -57,7 +57,7 @@ int Resampler::init(const AudioSpec &inSpec, const AudioSpec &outSpec)
 int Resampler::resample(AVFrame *inFrame, uint8_t **outData, int *outSamples)
 {
     if (!isInitialized_ || !swrCtx_ || !inFrame || !outData || !outSamples) {
-        SP_LOG_DEBUG("[Resampler] 重采样参数无效！");
+        SP_LOG_DEBUG("[Resampler] Invalid resample params!");
         return AVERROR(EINVAL);
     }
 

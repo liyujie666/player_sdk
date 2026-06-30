@@ -36,7 +36,7 @@ public:
     SmartMediaType mediaType() const;
     const SmartMediaInfo& mediaInfo() const;
 
-    // 回调
+    // Callback
     void setCallback(SmartPlayerCallback* callback);
 
 private:

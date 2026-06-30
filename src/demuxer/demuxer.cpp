@@ -156,7 +156,7 @@ int64_t Demuxer::getDuration() const
 {
     std::shared_lock<std::shared_mutex> locker(lock_);
     if (!fmtCtx_ || fmtCtx_->duration <= 0) return 0;
-    // fmtCtx_->duration 单位是微秒(AV_TIME_BASE)，转换为毫秒
+    // fmtCtx_->duration is in microseconds (AV_TIME_BASE), convert to milliseconds
     return fmtCtx_->duration / (AV_TIME_BASE / 1000);
 }
 
@@ -221,7 +221,7 @@ void Demuxer::findStreams()
 Demuxer::MediaType Demuxer::parseMediaType(const std::string& filename)
 {
     std::string url = filename;
-    // 转小写
+    // to lower case
     for (auto& c : url) c = (char)tolower((unsigned char)c);
 
     if (url.compare(0, 7, "rtsp://") == 0)  return MediaType::RTSP_TYPE;

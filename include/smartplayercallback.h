@@ -6,47 +6,50 @@
 #include "smartplayerdefs.h"
 
 /**
- * 回调接口 —— 用户继承此类，实现需要的事件，注册给 SmartPlayer。
- * 所有回调在播放器内部线程调用，用户不应在其中执行耗时操作或阻塞。
+ * Callback interface — users inherit this class, implement the events they need,
+ * and register an instance with SmartPlayer.
+ * All callbacks are invoked on the player's internal threads; do not perform
+ * long-running or blocking work inside them.
  */
 class SmartPlayerCallback {
 public:
     virtual ~SmartPlayerCallback() = default;
 
-    /// 播放状态变化
+    /// Playback state changed
     virtual void onStateChanged(SmartPlayerState /*state*/) {}
 
-    /// 播放进度变化 (ms)
+    /// Playback progress changed (ms)
     virtual void onPositionChanged(int64_t /*posMs*/) {}
 
-    /// 总时长就绪 (ms)
+    /// Total duration ready (ms)
     virtual void onDurationChanged(int64_t /*durationMs*/) {}
 
-    /// open 结果
+    /// open result
     virtual void onOpenResult(bool /*success*/, const std::string& /*errMsg*/) {}
 
-    /// 媒体信息就绪
+    /// Media info ready
     virtual void onMediaInfoReady(const SmartMediaInfo& /*info*/) {}
 
-    /// 播放结束
+    /// Playback finished
     virtual void onPlayFinished() {}
 
-    /// 错误
+    /// Error
     virtual void onError(const std::string& /*msg*/) {}
 
-    /// 截图完成
+    /// Screenshot completed
     virtual void onScreenshot(const std::string& /*path*/, bool /*success*/) {}
 
     /**
-     * 视频帧回调 —— 上层自行渲染。
+     * Video frame callback — render the frame yourself.
      *
-     * 数据布局由 pixelFormat 决定：
-     *   YUV420P: data = [Y: w*h][U: w*h/4][V: w*h/4] 连续存储
+     * Data layout depends on pixelFormat:
+     *   YUV420P: data = [Y: w*h][U: w*h/4][V: w*h/4] stored contiguously
      *   NV12:    data = [Y: w*h][interleaved UV: w*h/2]
-     *   RGBA:    data = 每像素 4 字节，共 w*h*4
-     *   BGRA:    data = 每像素 4 字节，共 w*h*4
+     *   RGBA:    data = 4 bytes per pixel, w*h*4 total
+     *   BGRA:    data = 4 bytes per pixel, w*h*4 total
      *
-     * 注意: data 指针仅在回调期间有效，如需保留请拷贝。
+     * Note: the data pointer is only valid during the callback; copy it
+     * if you need to keep the frame.
      */
     virtual void onVideoFrame(const uint8_t* /*data*/, int /*width*/, int /*height*/,
                               SmartPixelFormat /*pixelFormat*/) {}
