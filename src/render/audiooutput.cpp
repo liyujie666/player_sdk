@@ -197,8 +197,12 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                 resampler_->resample(frame, &audio_buf_, &out_samples);
                 audio_buf_size_ = resampler_->outputBufferSize(out_samples);
             } else {
+                // 不需要重采样，直接拷贝帧数据
+                int planar = av_sample_fmt_is_planar((AVSampleFormat)frame->format);
+                int channels = frame->ch_layout.nb_channels;
+
                 audio_buf_size_ = av_samples_get_buffer_size(
-                    nullptr, frame->ch_layout.nb_channels,
+                    nullptr, channels,
                     frame->nb_samples, (AVSampleFormat)frame->format, 1
                     );
                 if(audio_buf_size_ <=0){
@@ -219,7 +223,22 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                     GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
-                memcpy(audio_buf_, frame->data[0], audio_buf_size_);
+
+                if (planar && channels > 1) {
+                    // planar 格式：需要将各声道数据交织拷贝
+                    int bytes_per_sample = av_get_bytes_per_sample((AVSampleFormat)frame->format);
+                    int plane_size = frame->nb_samples * bytes_per_sample;
+                    uint8_t* dst = audio_buf_;
+                    for (int s = 0; s < frame->nb_samples; s++) {
+                        for (int ch = 0; ch < channels; ch++) {
+                            memcpy(dst, frame->data[ch] + s * bytes_per_sample, bytes_per_sample);
+                            dst += bytes_per_sample;
+                        }
+                    }
+                } else {
+                    // packed 格式：data[0] 包含所有交织数据，直接拷贝
+                    memcpy(audio_buf_, frame->data[0], audio_buf_size_);
+                }
             }
 
             audio_buf_index_ = 0;

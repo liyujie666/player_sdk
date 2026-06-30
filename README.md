@@ -59,11 +59,14 @@ smartplayer_sdk/
 ### Windows 快速编译（推荐）
 
 ```bash
-# 一键编译（自动检测 VS 2017/2019/2022，优先使用 Ninja）
+# 一键编译（自动检测 VS 2015~2026，优先使用 Ninja）
 build.bat
 
 # 运行示例
 run.bat path/to/video.mp4
+
+# 启用硬件解码 + 1.5 倍速 + 指定窗口大小
+run.bat path/to/video.mp4 --hw --speed 1.5 --size 1280x720
 ```
 
 ### CMake 手动编译
@@ -196,16 +199,40 @@ player.takeScreenshot("./screenshots");  // 截图
 
 ## 示例程序
 
-`examples/minimal_player.cpp` 是一个完整的 SDL2 播放器示例，支持：
+`examples/minimal_player.cpp` 是一个完整的 SDL2 播放器示例。
 
-- **Space** — 暂停 / 恢复
-- **Left / Right** — 快退 / 快进 10 秒
-- **ESC** — 退出
+### 命令行参数
 
 ```bash
-# 编译后运行
-run.bat path/to/video.mp4
+run.bat <video_file> [options]
 ```
+
+| 参数 | 说明 |
+|------|------|
+| `--hw` | 启用硬件解码（GPU 加速） |
+| `--speed <val>` | 设置初始倍速（0.5 / 1.0 / 1.5 / 2.0） |
+| `--size <WxH>` | 设置窗口大小（如 1920x1080，默认自适应视频分辨率） |
+| `--help` | 显示帮助 |
+
+示例：
+
+```bash
+run.bat video.mp4
+run.bat video.mp4 --hw
+run.bat video.mp4 --hw --speed 1.5
+run.bat video.mp4 --size 1920x1080
+```
+
+### 快捷键
+
+| 按键 | 功能 |
+|------|------|
+| Space | 暂停 / 恢复 |
+| ← / → | 快退 / 快进 10 秒 |
+| ↑ / ↓ | 音量 +/- 5 |
+| M | 切换静音 |
+| S | 循环切换倍速（1.0 → 1.5 → 2.0 → 0.5 → 1.0） |
+| ESC | 退出 |
 
 ## 集成到其他项目
 

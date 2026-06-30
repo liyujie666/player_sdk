@@ -24,6 +24,7 @@ public:
     SDL_Texture*  tex_ = nullptr;
     std::atomic<bool> hasFrame_{false};
     std::atomic<bool> finished_{false};   // 播放结束标志
+    bool customSize_ = false;             // 是否用户指定了窗口大小
 
     // 线程安全帧缓冲：渲染线程写入，主线程读取
     std::mutex frameMutex_;
@@ -116,7 +117,9 @@ public:
             texW_ = w;
             texH_ = h;
             texFmt_ = fmt;
-            SDL_SetWindowSize(win_, w, h);
+            if (!customSize_) {
+                SDL_SetWindowSize(win_, w, h);
+            }
         }
 
         if (fmt == SP_FMT_YUV420P) {
@@ -142,9 +145,52 @@ private:
     SmartPixelFormat texFmt_ = SP_FMT_UNKNOWN;
 };
 
+// 命令行参数解析辅助
+static void printUsage(const char* prog) {
+    printf("Usage: %s <video_file> [options]\n", prog);
+    printf("Options:\n");
+    printf("  --hw              Enable hardware decoding\n");
+    printf("  --speed <val>     Set playback speed (0.5/1.0/1.5/2.0)\n");
+    printf("  --size <WxH>      Set window size (e.g. 1920x1080)\n");
+    printf("\nControls:\n");
+    printf("  Space       Pause / Resume\n");
+    printf("  Left/Right  Seek -/+ 10s\n");
+    printf("  Up/Down     Volume +/- 5\n");
+    printf("  M           Toggle mute\n");
+    printf("  S           Cycle speed (1.0 -> 1.5 -> 2.0 -> 0.5 -> 1.0)\n");
+    printf("  ESC         Quit\n");
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 2) {
-        printf("Usage: %s <video_file>\n", argv[0]);
+        printUsage(argv[0]);
+        return 1;
+    }
+
+    // 解析命令行参数
+    const char* videoFile = nullptr;
+    bool hwDecode = false;
+    float initSpeed = 1.0f;
+    int winW = 1280, winH = 720;
+    bool hasCustomSize = false;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--hw") == 0) {
+            hwDecode = true;
+        } else if (strcmp(argv[i], "--speed") == 0 && i + 1 < argc) {
+            initSpeed = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--size") == 0 && i + 1 < argc) {
+            if (sscanf(argv[++i], "%dx%d", &winW, &winH) == 2) {
+                hasCustomSize = true;
+            }
+        } else if (argv[i][0] != '-') {
+            videoFile = argv[i];
+        }
+    }
+
+    if (!videoFile) {
+        printf("Error: No video file specified.\n");
+        printUsage(argv[0]);
         return 1;
     }
 
@@ -154,9 +200,10 @@ int main(int argc, char* argv[]) {
     }
 
     SDLPlayerCallback cb;
+    cb.customSize_ = hasCustomSize;
     cb.win_ = SDL_CreateWindow("SmartPlayer SDK",
                                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                               1280, 720, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+                               winW, winH, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!cb.win_) {
         printf("SDL_CreateWindow failed: %s\n", SDL_GetError());
         SDL_Quit();
@@ -164,7 +211,6 @@ int main(int argc, char* argv[]) {
     }
     cb.ren_ = SDL_CreateRenderer(cb.win_, -1, SDL_RENDERER_ACCELERATED);
     if (!cb.ren_) {
-        // 尝试软件渲染
         cb.ren_ = SDL_CreateRenderer(cb.win_, -1, SDL_RENDERER_SOFTWARE);
     }
     if (!cb.ren_) {
@@ -176,11 +222,9 @@ int main(int argc, char* argv[]) {
 
     SmartPlayer player;
     player.setCallback(&cb);
-    player.setHardwareDecode(false);  // 禁用硬解避免 CUDA 报错
-    player.open(argv[1]);
+    player.setHardwareDecode(hwDecode);
+    player.open(videoFile);
 
-    // 等待 open 结果，防止在打开失败后调用 play 导致崩溃
-    // open 本地文件是同步的，此时 onOpenResult 已回调
     if (player.state() == SP_STATE_STOPPED && !player.hasVideo() && !player.hasAudio()) {
         printf("[Player] Open failed, no media streams found.\n");
         SDL_DestroyRenderer(cb.ren_);
@@ -189,7 +233,30 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // 设置初始倍速
+    if (initSpeed != 1.0f) {
+        player.setSpeed(initSpeed);
+        printf("[Player] Speed: %.1fx\n", initSpeed);
+    }
+
+    int volume = 50;
+    bool muted = false;
+    float currentSpeed = initSpeed;
+    // 倍速循环表
+    const float speedTable[] = {1.0f, 1.5f, 2.0f, 0.5f};
+    const int speedTableSize = 4;
+    int speedIdx = 0;
+    for (int i = 0; i < speedTableSize; i++) {
+        if (speedTable[i] == currentSpeed) { speedIdx = i; break; }
+    }
+
     player.play();
+
+    // 禁用 SDL TextInput，防止中文输入法拦截字母按键
+    SDL_StopTextInput();
+
+    printf("[Player] Hardware decode: %s\n", hwDecode ? "ON" : "OFF");
+    printf("[Player] Volume: %d, Speed: %.1fx\n", volume, currentSpeed);
 
     bool running = true;
     while (running) {
@@ -197,25 +264,63 @@ int main(int argc, char* argv[]) {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) running = false;
             if (e.type == SDL_KEYDOWN) {
-                switch (e.key.keysym.sym) {
-                case SDLK_SPACE:
-                    if (player.state() == SP_STATE_RUNNING) player.pause();
-                    else if (player.state() == SP_STATE_PAUSED) player.play();
+                SDL_Scancode sc = e.key.keysym.scancode;
+                switch (sc) {
+                case SDL_SCANCODE_SPACE:
+                    if (player.state() == SP_STATE_RUNNING) {
+                        player.pause();
+                        printf("[Control] Pause\n");
+                    } else if (player.state() == SP_STATE_PAUSED) {
+                        player.play();
+                        printf("[Control] Resume\n");
+                    }
                     break;
-                case SDLK_ESCAPE:
+                case SDL_SCANCODE_ESCAPE:
+                    printf("[Control] Quit\n");
                     running = false;
                     break;
-                case SDLK_LEFT:
-                    player.seek(player.position() - 10000);
-                    break;
-                case SDLK_RIGHT:
-                    player.seek(player.position() + 10000);
+                case SDL_SCANCODE_LEFT: {
+                    int64_t pos = player.position() - 10000;
+                    if (pos < 0) pos = 0;
+                    player.seek(pos);
+                    printf("[Control] Seek -> %lld ms\n", (long long)pos);
                     break;
                 }
+                case SDL_SCANCODE_RIGHT: {
+                    int64_t pos = player.position() + 10000;
+                    if (pos > player.duration()) pos = player.duration();
+                    player.seek(pos);
+                    printf("[Control] Seek -> %lld ms\n", (long long)pos);
+                    break;
+                }
+                case SDL_SCANCODE_UP:
+                    volume = (volume + 5 > 100) ? 100 : volume + 5;
+                    player.setVolume(volume);
+                    printf("[Control] Volume: %d\n", volume);
+                    break;
+                case SDL_SCANCODE_DOWN:
+                    volume = (volume - 5 < 0) ? 0 : volume - 5;
+                    player.setVolume(volume);
+                    printf("[Control] Volume: %d\n", volume);
+                    break;
+                case SDL_SCANCODE_M:
+                    muted = !muted;
+                    player.setMute(muted);
+                    printf("[Control] Mute: %s\n", muted ? "ON" : "OFF");
+                    break;
+                case SDL_SCANCODE_S:
+                    speedIdx = (speedIdx + 1) % speedTableSize;
+                    currentSpeed = speedTable[speedIdx];
+                    player.setSpeed(currentSpeed);
+                    printf("[Control] Speed: %.1fx\n", currentSpeed);
+                    break;
+                default:
+                    break;
+                }
+                fflush(stdout);
             }
         }
 
-        // 播放结束后自动退出
         if (cb.finished_.load()) {
             running = false;
         }

@@ -181,7 +181,16 @@ void PlayerCore::initAudioModule()
         return;
     }
 
-    audio_output_ = new AudioOutput(in_spec, out_spec, audio_frame_queue_, sync_clock_);
+    // 滤镜输出格式为 S16（packed），采样率和声道数不变
+    // AudioOutput 的输入规格应匹配滤镜的实际输出，而非解码器原始输出
+    Resampler::AudioSpec filter_out_spec;
+    filter_out_spec.sampleRate    = in_spec.sampleRate;
+    filter_out_spec.sampleFmt     = AV_SAMPLE_FMT_S16;  // atempo + aformat 输出 s16
+    filter_out_spec.chs           = in_spec.chs;
+    filter_out_spec.chLayout      = in_spec.chLayout;
+    filter_out_spec.bytesPerSample = av_get_bytes_per_sample(AV_SAMPLE_FMT_S16);
+
+    audio_output_ = new AudioOutput(filter_out_spec, out_spec, audio_frame_queue_, sync_clock_);
     if (audio_output_->Init() < 0) {
         SP_LOG_ERROR("SDL 音频输出初始化失败");
         delete audio_filter_; audio_filter_ = nullptr;
@@ -420,7 +429,6 @@ void PlayerCore::seek(int64_t pos_ms)
         state_ = Running;
         cond_.notify_all();
     }
-    SP_LOG_DEBUG("seek to %lld ms", (long long)pos_ms);
 }
 
 void PlayerCore::setScreenshotSavePath(const std::string& savePath)
@@ -577,12 +585,17 @@ void PlayerCore::audioDecodeThreadFunc()
             ret = audio_filter_->process(decoded_frame, filtered_frame);
             if (ret < 0)
             {
+                // 滤镜处理失败，丢弃该帧（原始帧格式与 AudioOutput 期望的不匹配）
+                SP_LOG_DEBUG("音频滤镜处理失败(ret=%d)，丢弃当前帧", ret);
+                av_frame_unref(decoded_frame);
                 av_frame_unref(filtered_frame);
-                av_frame_move_ref(filtered_frame, decoded_frame);
+                continue;
             }
         }
         else
         {
+            // 无滤镜时，解码帧直接使用（注意：此时 AudioOutput 的 in_spec
+            // 应与解码器输出格式一致，否则需重采样）
             av_frame_move_ref(filtered_frame, decoded_frame);
         }
 
@@ -1104,9 +1117,9 @@ int64_t PlayerCore::duration() const
 int64_t PlayerCore::currentPos() const
 {
     if (hasAudio_) {
-        return sync_clock_->get_audio_clock() / 1000000;
+        return sync_clock_->get_audio_clock() / 1000;  // us → ms
     } else if (hasVideo_) {
-        return sync_clock_->getCurrentSystemClock() / 1000000;
+        return sync_clock_->getCurrentSystemClock() / 1000;  // us → ms
     }
     return 0;
 }

@@ -2,7 +2,7 @@
 build/
 cmake-build-*/
 out/
-
+tmp_dtmf_log/
 # IDE
 .vs/
 .vscode/
@@ -21,3 +21,4 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+*.mp4
