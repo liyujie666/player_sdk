@@ -4,6 +4,11 @@ project(SmartPlayerSDK LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# MSVC: treat source files as UTF-8
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # ========== 库类型 (默认 SHARED) ==========
 option(SMARTPLAYER_STATIC "Build as static library" OFF)
 if(NOT SMARTPLAYER_STATIC)
@@ -85,13 +90,7 @@ endif()
 
 target_link_libraries(SmartPlayerSDK PRIVATE ${FFMPEG_LIBS} ${SDL2_LIB})
 
-# ========== MSVC: UTF-8 源码编码 ==========
-if(MSVC)
-    target_compile_options(SmartPlayerSDK PRIVATE /utf-8)
-    if(TARGET SmartPlayerExample)
-        target_compile_options(SmartPlayerExample PRIVATE /utf-8)
-    endif()
-endif()
+
 
 # ========== DLL 导出宏 ==========
 if(NOT SMARTPLAYER_STATIC)

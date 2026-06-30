@@ -7,10 +7,10 @@ echo   SmartPlayerSDK Build Script
 echo ============================================
 echo.
 
-:: ===== 1. 查找并初始化 MSVC 环境 =====
+:: ===== 1. Find and init MSVC environment =====
 set "VCVARS="
 
-:: 方法1: 使用 vswhere 精确查找（VS 2017+自带）
+:: Method 1: Use vswhere (shipped with VS 2017+)
 for %%p in ("C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" ^
             "C:\Program Files\Microsoft Visual Studio\Installer\vswhere.exe") do (
     if exist %%p (
@@ -22,7 +22,7 @@ for %%p in ("C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.ex
     )
 )
 
-:: 方法1.5: 检查用户自定义安装路径
+:: Method 1.5: Check custom install path
 if not defined VCVARS (
     for %%e in (Professional Enterprise Community BuildTools Preview) do (
         if not defined VCVARS (
@@ -31,7 +31,7 @@ if not defined VCVARS (
             )
         )
     )
-    :: 也检查直接在根目录下的情况（无 edition 子目录）
+    :: Also check root directory (no edition subfolder)
     if not defined VCVARS (
         if exist "D:\Visual Studio\Visual Studio 2026\VC\Auxiliary\Build\vcvars64.bat" (
             set "VCVARS=D:\Visual Studio\Visual Studio 2026\VC\Auxiliary\Build\vcvars64.bat"
@@ -39,7 +39,7 @@ if not defined VCVARS (
     )
 )
 
-:: 方法2: 遍历常见安装路径（VS 2015~2026）
+:: Method 2: Scan common install paths (VS 2015~2026)
 if not defined VCVARS (
     for %%y in (2026 2022 2019 2017) do (
         for %%e in (Professional Enterprise Community BuildTools Preview) do (
@@ -60,7 +60,7 @@ if not defined VCVARS (
     )
 )
 
-:: 方法3: 检查 VS 2015（旧版目录结构）
+:: Method 3: Check VS 2015 (legacy directory structure)
 if not defined VCVARS (
     for %%d in ("C:\Program Files (x86)\Microsoft Visual Studio 14.0" ^
                 "C:\Program Files\Microsoft Visual Studio 14.0" ^
@@ -74,34 +74,32 @@ if not defined VCVARS (
 )
 
 if not defined VCVARS (
-    echo [ERROR] 未找到 Visual Studio，请安装 VS 2015/2017/2019/2022
-    echo         已搜索路径: C/D/E 盘 Program Files 目录
-    echo         也尝试了 vswhere 工具查找
+    echo [ERROR] Visual Studio not found. Please install VS 2015/2017/2019/2022/2026.
     exit /b 1
 )
 
-echo [1/4] 初始化 MSVC 环境...
-echo        使用: !VCVARS!
+echo [1/4] Init MSVC environment...
+echo        Using: !VCVARS!
 if defined VCVARS_ARG (
     call "!VCVARS!" !VCVARS_ARG! >nul 2>&1
 ) else (
     call "!VCVARS!" >nul 2>&1
 )
 
-:: ===== 2. 确定 CMake 生成器 =====
-:: %~dp0 末尾带 \，去掉它避免 \" 转义引号
+:: ===== 2. Determine CMake generator =====
+:: Strip trailing backslash from %~dp0 to avoid \" escaping issues
 set "SDK_DIR=%~dp0"
 if "%SDK_DIR:~-1%"=="\" set "SDK_DIR=%SDK_DIR:~0,-1%"
 set "DEPS_DIR=%SDK_DIR%\..\dependencies"
 
-:: 检查 Ninja 是否可用
+:: Check if Ninja is available
 where ninja >nul 2>&1
 if !errorlevel! equ 0 (
     set "GENERATOR=Ninja"
     set "BUILD_DIR=!SDK_DIR!\build"
     set "EXE_DIR=!SDK_DIR!\build"
 ) else (
-    :: 根据找到的 VS 版本选择对应的 CMake 生成器
+    :: Select CMake generator based on detected VS version
     set "GENERATOR=Visual Studio 17 2022"
     echo "!VCVARS!" | findstr /i "2026" >nul && set "GENERATOR=Visual Studio 18 2026"
     echo "!VCVARS!" | findstr /i "2019" >nul && set "GENERATOR=Visual Studio 16 2019"
@@ -111,10 +109,10 @@ if !errorlevel! equ 0 (
     set "EXE_DIR=!SDK_DIR!\build\Release"
 )
 
-echo [2/4] 使用生成器: !GENERATOR!
+echo [2/4] Generator: !GENERATOR!
 
-:: ===== 3. CMake 配置 =====
-echo [3/4] CMake 配置...
+:: ===== 3. CMake configure =====
+echo [3/4] CMake configure...
 if exist "!BUILD_DIR!" rmdir /s /q "!BUILD_DIR!"
 
 if "!GENERATOR!"=="Ninja" (
@@ -126,31 +124,31 @@ if "!GENERATOR!"=="Ninja" (
 )
 
 if !errorlevel! neq 0 (
-    echo [ERROR] CMake 配置失败
+    echo [ERROR] CMake configure failed
     exit /b 1
 )
 
-:: ===== 4. 编译 =====
-echo [4/4] 编译中...
+:: ===== 4. Build =====
+echo [4/4] Building...
 cmake --build "!BUILD_DIR!" --config Release
 if !errorlevel! neq 0 (
-    echo [ERROR] 编译失败
+    echo [ERROR] Build failed
     exit /b 1
 )
 
-:: ===== 5. 复制运行时 DLL =====
+:: ===== 5. Copy runtime DLLs =====
 echo.
-echo 复制运行时 DLL...
+echo Copying runtime DLLs...
 if not exist "!EXE_DIR!" mkdir "!EXE_DIR!"
 copy /y "%DEPS_DIR%\bin\*.dll" "!EXE_DIR!\" >nul 2>&1
 
-:: ===== 6. 验证产物 =====
+:: ===== 6. Verify output =====
 echo.
 echo ============================================
-echo   构建成功!
+echo   Build succeeded!
 echo ============================================
 echo.
-echo 产物位置: !EXE_DIR!
+echo Output: !EXE_DIR!
 echo.
 
 if exist "!EXE_DIR!\SmartPlayerSDK.dll" (
@@ -166,5 +164,5 @@ if exist "!EXE_DIR!\SmartPlayerExample.exe" (
 )
 
 echo.
-echo 运行示例: run.bat [视频文件路径]
+echo Run: run.bat [video_file]
 echo.
